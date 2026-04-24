@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "prisma generate && prisma migrate deploy && node src/index.js",
+    "startCommand": "prisma generate && prisma db push && node src/index.js",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
   }

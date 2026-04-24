@@ -12,21 +12,21 @@ const { errorHandler } = require('./middleware/errorHandler');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ─── Security ────────────────────────────────────────────────────────────────
+// ─── Trust Railway proxy (required for rate-limit behind reverse proxy) ───────
+app.set('trust proxy', 1);
+
+// ─── Security ─────────────────────────────────────────────────────────────────
 app.use(helmet());
 
 app.use(cors({
-  origin: [
-    'chrome-extension://*',
-    ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : [])
-  ],
+  origin: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
 // Global rate limiter — anti-abuse
 const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
