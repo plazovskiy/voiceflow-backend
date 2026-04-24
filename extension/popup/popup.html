@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VoiceFlow</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <!-- AUTH SCREEN -->
+  <div id="screen-auth" class="screen active">
+    <div class="brand">
+      <div class="brand-icon">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+          <!-- mic capsule -->
+          <rect x="8" y="1" width="8" height="13" rx="4" fill="white" opacity="0.95"/>
+          <!-- arc -->
+          <path d="M5 11a7 7 0 0 0 14 0" stroke="white" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+          <!-- stand -->
+          <line x1="12" y1="18" x2="12" y2="22" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+          <!-- base -->
+          <line x1="8.5" y1="22" x2="15.5" y2="22" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <span class="brand-name">VoiceFlow</span>
+    </div>
+
+    <div class="auth-tabs">
+      <button class="auth-tab active" data-tab="login">Sign In</button>
+      <button class="auth-tab" data-tab="register">Sign Up</button>
+    </div>
+
+    <div id="tab-login" class="auth-form active">
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="login-email" placeholder="you@example.com" autocomplete="email">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <div id="login-error" class="error-msg hidden"></div>
+      <button id="btn-login" class="btn-primary">
+        <span class="btn-text">Sign In</span>
+        <span class="btn-loader hidden"></span>
+      </button>
+    </div>
+
+    <div id="tab-register" class="auth-form">
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="reg-email" placeholder="you@example.com" autocomplete="email">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="reg-password" placeholder="Min. 8 characters" autocomplete="new-password">
+      </div>
+      <div id="reg-error" class="error-msg hidden"></div>
+      <button id="btn-register" class="btn-primary">
+        <span class="btn-text">Create Account</span>
+        <span class="btn-loader hidden"></span>
+      </button>
+      <p class="trial-note">✦ Free trial: 10 transcriptions/day</p>
+    </div>
+  </div>
+
+  <!-- MAIN SCREEN -->
+  <div id="screen-main" class="screen">
+    <!-- Header -->
+    <div class="top-bar">
+      <div class="brand-small">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <rect x="8" y="1" width="8" height="13" rx="4" fill="currentColor"/>
+          <path d="M5 11a7 7 0 0 0 14 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+          <line x1="12" y1="18" x2="12" y2="22" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <line x1="8.5" y1="22" x2="15.5" y2="22" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+        <span>VoiceFlow</span>
+      </div>
+      <button id="btn-settings" class="icon-btn" title="Settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Plan badge -->
+    <div id="plan-badge" class="plan-badge trial">
+      <span id="plan-label">Trial</span>
+      <span id="trial-count" class="trial-count"></span>
+    </div>
+
+    <!-- Record button -->
+    <div class="record-area">
+      <div class="record-ring" id="record-ring">
+        <button id="btn-record" class="record-btn" title="Click to start recording">
+          <svg id="icon-mic" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/>
+          </svg>
+          <svg id="icon-stop" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" class="hidden">
+            <rect x="6" y="6" width="12" height="12" rx="2"/>
+          </svg>
+        </button>
+      </div>
+      <div id="record-status" class="record-status">Click to record</div>
+      <div id="record-timer" class="record-timer hidden">0:00</div>
+    </div>
+
+    <!-- Waveform visualizer -->
+    <canvas id="waveform" class="waveform hidden" width="280" height="40"></canvas>
+
+    <!-- Result -->
+    <div id="result-area" class="result-area hidden">
+      <div class="result-label">Transcribed text</div>
+      <div id="result-text" class="result-text"></div>
+      <div class="result-actions">
+        <button id="btn-copy" class="btn-secondary">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2"/>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+          Copy
+        </button>
+        <button id="btn-insert" class="btn-primary-sm">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 5v14M5 12l7 7 7-7"/>
+          </svg>
+          Insert
+        </button>
+      </div>
+    </div>
+
+    <!-- Upgrade banner (trial only) -->
+    <div id="upgrade-banner" class="upgrade-banner hidden">
+      <span>⚡ Upgrade for unlimited use</span>
+      <button id="btn-upgrade" class="btn-upgrade">Upgrade</button>
+    </div>
+  </div>
+
+  <!-- SETTINGS SCREEN -->
+  <div id="screen-settings" class="screen">
+    <div class="settings-header">
+      <button id="btn-back" class="icon-btn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 12H5M12 5l-7 7 7 7"/>
+        </svg>
+      </button>
+      <span>Settings</span>
+    </div>
+
+    <div class="settings-body">
+      <div class="setting-group">
+        <label class="setting-label">Recognition Language</label>
+        <select id="language-select" class="setting-select">
+          <option value="auto">🌐 Auto-detect</option>
+          <option value="ru">🇷🇺 Russian</option>
+          <option value="en">🇺🇸 English</option>
+          <option value="de">🇩🇪 German</option>
+          <option value="fr">🇫🇷 French</option>
+          <option value="es">🇪🇸 Spanish</option>
+          <option value="it">🇮🇹 Italian</option>
+          <option value="pt">🇵🇹 Portuguese</option>
+          <option value="zh">🇨🇳 Chinese</option>
+          <option value="ja">🇯🇵 Japanese</option>
+          <option value="ko">🇰🇷 Korean</option>
+          <option value="ar">🇸🇦 Arabic</option>
+          <option value="uk">🇺🇦 Ukrainian</option>
+        </select>
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label">Auto-insert after recording</label>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-autoinsert" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label">Backend URL</label>
+        <input type="url" id="backend-url" class="setting-input" placeholder="https://your-server.com">
+        <span class="setting-hint">Your VoiceFlow server address</span>
+      </div>
+
+      <button id="btn-save-settings" class="btn-primary mt-16">Save Settings</button>
+
+      <div class="settings-divider"></div>
+
+      <div class="account-info">
+        <div id="settings-email" class="account-email"></div>
+        <div id="settings-plan" class="account-plan"></div>
+      </div>
+
+      <button id="btn-logout" class="btn-danger">Sign Out</button>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
