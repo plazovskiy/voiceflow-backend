@@ -435,3 +435,73 @@ input::placeholder { color: var(--text3); }
 
 /* ── Utility ────────────────────────────────────────────────────────────── */
 .hidden { display: none !important; }
+
+/* ── How-to hint ────────────────────────────────────────────────────────── */
+.how-to-hint {
+  display: flex;
+  gap: 12px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 14px;
+}
+.hint-icon {
+  flex-shrink: 0;
+  width: 36px; height: 36px;
+  background: rgba(124,108,252,0.15);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--accent);
+}
+.hint-text { display: flex; flex-direction: column; gap: 3px; }
+.hint-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.hint-desc { font-size: 11.5px; color: var(--text2); line-height: 1.5; }
+.hint-desc strong { color: var(--accent); font-weight: 600; }
+
+/* ── Upgrade banner (improved) ──────────────────────────────────────────── */
+.upgrade-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: linear-gradient(135deg, rgba(124,108,252,0.12), rgba(176,108,252,0.08));
+  border: 1px solid rgba(124,108,252,0.3);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 14px;
+}
+.upgrade-text { display: flex; align-items: flex-start; gap: 10px; }
+.upgrade-icon { font-size: 20px; line-height: 1; }
+.upgrade-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.upgrade-sub { font-size: 11.5px; color: var(--text2); margin-top: 2px; }
+.btn-upgrade {
+  width: 100%;
+  background: var(--accent);
+  border: none; border-radius: var(--radius-sm);
+  color: white; font-size: 13px; font-weight: 600;
+  padding: 10px; cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-upgrade:hover { background: #8f80ff; }
+
+/* ── Quick actions ──────────────────────────────────────────────────────── */
+.quick-actions { display: flex; flex-direction: column; gap: 8px; margin-top: auto; }
+.action-card {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 11px 13px;
+  color: var(--text2); font-size: 13px; font-weight: 500;
+  cursor: pointer; text-align: left; width: 100%;
+  transition: border-color 0.2s, color 0.2s;
+}
+.action-card:hover { border-color: var(--accent); color: var(--text); }
+
+/* ── Upgrade in settings ────────────────────────────────────────────────── */
+.upgrade-settings { margin-top: 4px; }
+.btn-upgrade-full {
+  width: 100%; background: var(--accent); border: none;
+  border-radius: var(--radius-sm); color: white;
+  font-size: 13px; font-weight: 600; padding: 11px;
+  cursor: pointer; transition: background 0.2s;
+}
+.btn-upgrade-full:hover { background: #8f80ff; }

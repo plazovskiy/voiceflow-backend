@@ -9,18 +9,15 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
+
   <!-- AUTH SCREEN -->
   <div id="screen-auth" class="screen active">
     <div class="brand">
       <div class="brand-icon">
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
-          <!-- mic capsule -->
           <rect x="8" y="1" width="8" height="13" rx="4" fill="white" opacity="0.95"/>
-          <!-- arc -->
           <path d="M5 11a7 7 0 0 0 14 0" stroke="white" stroke-width="1.8" stroke-linecap="round" fill="none"/>
-          <!-- stand -->
           <line x1="12" y1="18" x2="12" y2="22" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
-          <!-- base -->
           <line x1="8.5" y1="22" x2="15.5" y2="22" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
         </svg>
       </div>
@@ -62,12 +59,13 @@
         <span class="btn-text">Create Account</span>
         <span class="btn-loader hidden"></span>
       </button>
-      <p class="trial-note">✦ Free trial: 10 transcriptions/day</p>
+      <p class="trial-note">✦ Free trial: 10 minutes of voice recognition</p>
     </div>
   </div>
 
   <!-- MAIN SCREEN -->
   <div id="screen-main" class="screen">
+
     <!-- Header -->
     <div class="top-bar">
       <div class="brand-small">
@@ -93,52 +91,45 @@
       <span id="trial-count" class="trial-count"></span>
     </div>
 
-    <!-- Record button -->
-    <div class="record-area">
-      <div class="record-ring" id="record-ring">
-        <button id="btn-record" class="record-btn" title="Click to start recording">
-          <svg id="icon-mic" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/>
-          </svg>
-          <svg id="icon-stop" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" class="hidden">
-            <rect x="6" y="6" width="12" height="12" rx="2"/>
-          </svg>
-        </button>
+    <!-- How to use hint -->
+    <div class="how-to-hint">
+      <div class="hint-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+          <rect x="8" y="1" width="8" height="13" rx="4" fill="currentColor"/>
+          <path d="M5 11a7 7 0 0 0 14 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+          <line x1="12" y1="18" x2="12" y2="22" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <line x1="8.5" y1="22" x2="15.5" y2="22" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
       </div>
-      <div id="record-status" class="record-status">Click to record</div>
-      <div id="record-timer" class="record-timer hidden">0:00</div>
-    </div>
-
-    <!-- Waveform visualizer -->
-    <canvas id="waveform" class="waveform hidden" width="280" height="40"></canvas>
-
-    <!-- Result -->
-    <div id="result-area" class="result-area hidden">
-      <div class="result-label">Transcribed text</div>
-      <div id="result-text" class="result-text"></div>
-      <div class="result-actions">
-        <button id="btn-copy" class="btn-secondary">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="9" y="9" width="13" height="13" rx="2"/>
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-          </svg>
-          Copy
-        </button>
-        <button id="btn-insert" class="btn-primary-sm">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 5v14M5 12l7 7 7-7"/>
-          </svg>
-          Insert
-        </button>
+      <div class="hint-text">
+        <div class="hint-title">Voice button is on the page</div>
+        <div class="hint-desc">Look for the purple <strong>Voice</strong> button in the corner of any webpage. Click it to start recording — text inserts where your cursor is.</div>
       </div>
     </div>
 
     <!-- Upgrade banner (trial only) -->
     <div id="upgrade-banner" class="upgrade-banner hidden">
-      <span>⚡ Upgrade for unlimited use</span>
-      <button id="btn-upgrade" class="btn-upgrade">Upgrade</button>
+      <div class="upgrade-text">
+        <span class="upgrade-icon">⚡</span>
+        <div>
+          <div class="upgrade-title">Trial limit reached</div>
+          <div class="upgrade-sub">Upgrade to Pro for unlimited voice input</div>
+        </div>
+      </div>
+      <button id="btn-upgrade" class="btn-upgrade">Upgrade — $10/mo</button>
     </div>
+
+    <!-- Quick actions -->
+    <div class="quick-actions">
+      <button id="btn-open-settings" class="action-card">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+        </svg>
+        Language & Settings
+      </button>
+    </div>
+
   </div>
 
   <!-- SETTINGS SCREEN -->
@@ -173,17 +164,11 @@
       </div>
 
       <div class="setting-group">
-        <label class="setting-label">Auto-insert after recording</label>
+        <label class="setting-label">Auto-insert while recording</label>
         <label class="toggle">
           <input type="checkbox" id="toggle-autoinsert" checked>
           <span class="toggle-slider"></span>
         </label>
-      </div>
-
-      <div class="setting-group">
-        <label class="setting-label">Backend URL</label>
-        <input type="url" id="backend-url" class="setting-input" placeholder="https://your-server.com">
-        <span class="setting-hint">Your VoiceFlow server address</span>
       </div>
 
       <button id="btn-save-settings" class="btn-primary mt-16">Save Settings</button>
@@ -193,6 +178,10 @@
       <div class="account-info">
         <div id="settings-email" class="account-email"></div>
         <div id="settings-plan" class="account-plan"></div>
+      </div>
+
+      <div id="upgrade-settings" class="upgrade-settings hidden">
+        <button id="btn-upgrade-settings" class="btn-upgrade-full">⚡ Upgrade to Pro — $10/mo</button>
       </div>
 
       <button id="btn-logout" class="btn-danger">Sign Out</button>

@@ -1,11 +1,5 @@
 // ─── Config ───────────────────────────────────────────────────────────────────
-const DEFAULT_BACKEND = 'https://voiceflow-backend-production-b82d.up.railway.app'; // Change before publishing
-
-// ─── State ────────────────────────────────────────────────────────────────────
-let isRecording = false;
-let recordTimer = null;
-let recordSeconds = 0;
-let lastTranscribedText = '';
+const DEFAULT_BACKEND = 'https://voiceflow-backend-production-b82d.up.railway.app';
 
 // ─── Storage helpers ──────────────────────────────────────────────────────────
 async function getStorage(keys) {
@@ -17,8 +11,7 @@ async function setStorage(data) {
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 async function getBackendUrl() {
-  const data = await getStorage(['backendUrl']);
-  return (data.backendUrl || DEFAULT_BACKEND).replace(/\/$/, '');
+  return DEFAULT_BACKEND;
 }
 
 async function apiFetch(path, options = {}, retry = true) {
@@ -46,8 +39,7 @@ async function apiFetch(path, options = {}, retry = true) {
 
 async function refreshAccessToken(refreshToken) {
   try {
-    const baseUrl = await getBackendUrl();
-    const res = await fetch(`${baseUrl}/api/auth/refresh`, {
+    const res = await fetch(`${DEFAULT_BACKEND}/api/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken }),
@@ -61,8 +53,7 @@ async function refreshAccessToken(refreshToken) {
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 async function login(email, password) {
-  const baseUrl = await getBackendUrl();
-  const res = await fetch(`${baseUrl}/api/auth/login`, {
+  const res = await fetch(`${DEFAULT_BACKEND}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
@@ -74,8 +65,7 @@ async function login(email, password) {
 }
 
 async function register(email, password) {
-  const baseUrl = await getBackendUrl();
-  const res = await fetch(`${baseUrl}/api/auth/register`, {
+  const res = await fetch(`${DEFAULT_BACKEND}/api/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
@@ -113,184 +103,54 @@ function showScreen(name) {
 
 function updateMainUI(user) {
   if (!user) return;
-  const badge = document.getElementById('plan-badge');
-  const planLabel = document.getElementById('plan-label');
-  const trialCount = document.getElementById('trial-count');
+  const badge       = document.getElementById('plan-badge');
+  const planLabel   = document.getElementById('plan-label');
+  const trialCount  = document.getElementById('trial-count');
   const upgradeBanner = document.getElementById('upgrade-banner');
+  const upgradeSettings = document.getElementById('upgrade-settings');
 
   if (user.plan === 'PRO' && user.status === 'ACTIVE') {
     badge.className = 'plan-badge pro';
     planLabel.textContent = '⚡ Pro';
     trialCount.textContent = 'Unlimited';
     upgradeBanner.classList.add('hidden');
+    upgradeSettings?.classList.add('hidden');
   } else {
     badge.className = 'plan-badge trial';
     planLabel.textContent = 'Trial';
-    const used = user.trialSecondsUsed || 0;
-    const limit = user.trialSecondsLimit || 600;
-    const usedMin = (used/60).toFixed(1); const limMin = (limit/60).toFixed(0); trialCount.textContent = `${usedMin}/ min used`;
-    if (used >= limit * 0.7) upgradeBanner.classList.remove('hidden');
-  }
+    const used  = parseFloat(user.trialSecondsUsed || 0);
+    const limit = parseFloat(user.trialSecondsLimit || 600);
+    const usedMin  = (used  / 60).toFixed(1);
+    const limitMin = (limit / 60).toFixed(0);
+    trialCount.textContent = `${usedMin}/${limitMin} min used`;
 
-  document.getElementById('settings-email').textContent = user.email || '';
-  document.getElementById('settings-plan').textContent =
-    user.plan === 'PRO' ? 'Pro Plan — Unlimited' : `Trial — ${user.trialMinutesRemaining || '10.0'} min left`;
-}
-
-// ─── Recording via offscreen document ────────────────────────────────────────
-async function startRecording() {
-  setStatus('Starting…');
-
-  const response = await chrome.runtime.sendMessage({ type: 'START_RECORDING' });
-
-  if (!response || !response.success) {
-    setStatus('Microphone error: ' + (response?.error || 'unknown'));
-    return;
-  }
-
-  isRecording = true;
-  chrome.runtime.sendMessage({ type: 'RECORDING_START' });
-
-  // UI
-  document.getElementById('btn-record').classList.add('recording');
-  document.getElementById('record-ring').classList.add('recording');
-  document.getElementById('icon-mic').classList.add('hidden');
-  document.getElementById('icon-stop').classList.remove('hidden');
-  document.getElementById('result-area').classList.add('hidden');
-
-  // Timer
-  recordSeconds = 0;
-  updateTimer();
-  document.getElementById('record-timer').classList.remove('hidden');
-  recordTimer = setInterval(() => { recordSeconds++; updateTimer(); }, 1000);
-
-  setStatus('Recording… click to stop');
-
-  // Auto-stop after 3 minutes
-  setTimeout(() => { if (isRecording) stopRecording(); }, 3 * 60 * 1000);
-}
-
-async function stopRecording() {
-  if (!isRecording) return;
-  isRecording = false;
-  clearInterval(recordTimer);
-  chrome.runtime.sendMessage({ type: 'RECORDING_STOP' });
-
-  // UI
-  document.getElementById('btn-record').classList.remove('recording');
-  document.getElementById('record-ring').classList.remove('recording');
-  document.getElementById('icon-mic').classList.remove('hidden');
-  document.getElementById('icon-stop').classList.add('hidden');
-  document.getElementById('record-timer').classList.add('hidden');
-  setStatus('Processing…');
-
-  const response = await chrome.runtime.sendMessage({ type: 'STOP_RECORDING' });
-
-  if (!response || !response.success || !response.audio) {
-    setStatus('No audio captured. Try again.');
-    return;
-  }
-
-  await transcribeAudio(response.audio, response.mimeType);
-}
-
-function updateTimer() {
-  const m = Math.floor(recordSeconds / 60);
-  const s = recordSeconds % 60;
-  document.getElementById('record-timer').textContent = `${m}:${s.toString().padStart(2, '0')}`;
-}
-
-// ─── Transcription ────────────────────────────────────────────────────────────
-async function transcribeAudio(base64Audio, mimeType) {
-  try {
-    // Convert base64 back to blob
-    const binary = atob(base64Audio);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const blob = new Blob([bytes], { type: mimeType });
-
-    if (blob.size < 500) {
-      setStatus('No speech detected. Try again.');
-      return;
+    const remaining = limit - used;
+    if (remaining <= 0) {
+      upgradeBanner.classList.remove('hidden');
+      upgradeSettings?.classList.remove('hidden');
+    } else if (remaining < limit * 0.3) {
+      // Show banner when less than 30% left
+      upgradeBanner.classList.remove('hidden');
+      upgradeSettings?.classList.remove('hidden');
     }
 
-    const settings = await getStorage(['language', 'autoInsert']);
-    const language = settings.language || 'auto';
-
-    const formData = new FormData();
-    formData.append('audio', blob, 'audio.webm');
-    formData.append('language', language);
-
-    const res = await apiFetch('/api/transcribe', { method: 'POST', body: formData });
-    if (!res) return;
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      if (res.status === 429) {
-        setStatus('Daily limit reached. Upgrade for unlimited!');
-        document.getElementById('upgrade-banner').classList.remove('hidden');
-      } else {
-        setStatus(err.error || 'Transcription failed. Try again.');
-      }
-      return;
+    if (document.getElementById('settings-plan')) {
+      document.getElementById('settings-plan').textContent =
+        `Trial — ${user.trialMinutesRemaining || '10.0'} min remaining`;
     }
-
-    const data = await res.json();
-    lastTranscribedText = data.text;
-
-    // Update trial counter
-    if (data.trialSecondsRemaining !== undefined) {
-      const stored = await getStorage(['user']);
-      const user = stored.user || {};
-      user.trialSecondsUsed = data.trialSecondsUsed;
-      user.trialSecondsLimit = data.trialSecondsLimit;
-      user.trialSecondsRemaining = data.trialSecondsRemaining;
-      user.trialMinutesRemaining = data.trialMinutesRemaining;
-      await setStorage({ user });
-      updateMainUI(user);
-    }
-    }
-
-    showResult(data.text);
-
-    const autoInsert = settings.autoInsert !== false;
-    if (autoInsert) await insertText(data.text);
-
-  } catch (err) {
-    console.error(err);
-    setStatus('Network error. Check your connection.');
   }
-}
 
-function setStatus(text) {
-  document.getElementById('record-status').textContent = text;
-}
-
-function showResult(text) {
-  document.getElementById('result-text').textContent = text;
-  document.getElementById('result-area').classList.remove('hidden');
-  setStatus('Click to record');
-}
-
-// ─── Insert text into page ────────────────────────────────────────────────────
-async function insertText(text) {
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id) return;
-
-    await chrome.tabs.sendMessage(tab.id, { type: 'INSERT_TEXT', text });
-  } catch (err) {
-    console.error('Insert error:', err);
+  if (document.getElementById('settings-email')) {
+    document.getElementById('settings-email').textContent = user.email || '';
   }
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 async function init() {
-  const data = await getStorage(['accessToken', 'user', 'language', 'autoInsert', 'backendUrl']);
+  const data = await getStorage(['accessToken', 'user', 'language', 'autoInsert']);
 
   if (data.language) document.getElementById('language-select').value = data.language;
   if (data.autoInsert !== undefined) document.getElementById('toggle-autoinsert').checked = data.autoInsert;
-  if (data.backendUrl) document.getElementById('backend-url').value = data.backendUrl;
 
   if (data.accessToken) {
     const user = await fetchUserData() || data.user;
@@ -300,7 +160,6 @@ async function init() {
       return;
     }
   }
-
   showScreen('auth');
 }
 
@@ -320,10 +179,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Login
   document.getElementById('btn-login').addEventListener('click', async () => {
-    const email = document.getElementById('login-email').value.trim();
+    const email    = document.getElementById('login-email').value.trim();
     const password = document.getElementById('login-password').value;
-    const errEl = document.getElementById('login-error');
-    const btn = document.getElementById('btn-login');
+    const errEl    = document.getElementById('login-error');
+    const btn      = document.getElementById('btn-login');
 
     errEl.classList.add('hidden');
     btn.querySelector('.btn-text').classList.add('hidden');
@@ -344,10 +203,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Register
   document.getElementById('btn-register').addEventListener('click', async () => {
-    const email = document.getElementById('reg-email').value.trim();
+    const email    = document.getElementById('reg-email').value.trim();
     const password = document.getElementById('reg-password').value;
-    const errEl = document.getElementById('reg-error');
-    const btn = document.getElementById('btn-register');
+    const errEl    = document.getElementById('reg-error');
+    const btn      = document.getElementById('btn-register');
 
     errEl.classList.add('hidden');
     btn.querySelector('.btn-text').classList.add('hidden');
@@ -366,41 +225,25 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Record toggle
-  document.getElementById('btn-record').addEventListener('click', () => {
-    if (isRecording) stopRecording();
-    else startRecording();
-  });
-
-  // Copy
-  document.getElementById('btn-copy').addEventListener('click', async () => {
-    if (!lastTranscribedText) return;
-    await navigator.clipboard.writeText(lastTranscribedText);
-    const btn = document.getElementById('btn-copy');
-    btn.textContent = '✓ Copied';
-    setTimeout(() => {
-      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy';
-    }, 2000);
-  });
-
-  // Insert manually
-  document.getElementById('btn-insert').addEventListener('click', async () => {
-    if (lastTranscribedText) await insertText(lastTranscribedText);
-  });
-
-  // Settings
+  // Settings navigation
   document.getElementById('btn-settings').addEventListener('click', () => showScreen('settings'));
+  document.getElementById('btn-open-settings').addEventListener('click', () => showScreen('settings'));
   document.getElementById('btn-back').addEventListener('click', () => showScreen('main'));
 
+  // Save settings
   document.getElementById('btn-save-settings').addEventListener('click', async () => {
-    const language = document.getElementById('language-select').value;
+    const language   = document.getElementById('language-select').value;
     const autoInsert = document.getElementById('toggle-autoinsert').checked;
-    const backendUrl = document.getElementById('backend-url').value.trim();
-    await setStorage({ language, autoInsert, backendUrl });
+    await setStorage({ language, autoInsert });
     const btn = document.getElementById('btn-save-settings');
     btn.textContent = '✓ Saved!';
     setTimeout(() => { btn.textContent = 'Save Settings'; }, 2000);
   });
+
+  // Upgrade buttons
+  const upgradeHandler = () => chrome.tabs.create({ url: 'https://your-website.com/upgrade' });
+  document.getElementById('btn-upgrade')?.addEventListener('click', upgradeHandler);
+  document.getElementById('btn-upgrade-settings')?.addEventListener('click', upgradeHandler);
 
   // Logout
   document.getElementById('btn-logout').addEventListener('click', async () => {
@@ -408,12 +251,7 @@ document.addEventListener('DOMContentLoaded', () => {
     showScreen('auth');
   });
 
-  // Upgrade
-  document.getElementById('btn-upgrade')?.addEventListener('click', () => {
-    chrome.tabs.create({ url: 'https://your-website.com/upgrade' });
-  });
-
-  // Enter key
+  // Enter key in auth
   document.getElementById('login-password').addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('btn-login').click();
   });
