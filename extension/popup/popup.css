@@ -505,3 +505,84 @@ input::placeholder { color: var(--text3); }
   cursor: pointer; transition: background 0.2s;
 }
 .btn-upgrade-full:hover { background: #8f80ff; }
+
+/* ── Upgrade Screen ─────────────────────────────────────────────────────── */
+.upgrade-screen-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 8px 0 4px;
+  flex: 1;
+}
+.upgrade-screen-icon {
+  width: 64px; height: 64px;
+  background: rgba(124,108,252,0.12);
+  border: 1px solid rgba(124,108,252,0.2);
+  border-radius: 20px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--accent);
+  margin-bottom: 16px;
+}
+.upgrade-screen-title {
+  font-family: var(--font-head);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 8px;
+  letter-spacing: -0.3px;
+}
+.upgrade-screen-sub {
+  font-size: 13px;
+  color: var(--text2);
+  line-height: 1.55;
+  margin-bottom: 20px;
+  max-width: 240px;
+}
+.upgrade-features {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+  text-align: left;
+}
+.upgrade-feature {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text2);
+}
+.feature-check {
+  width: 20px; height: 20px;
+  background: rgba(108,252,160,0.12);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: #6cfca0;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.btn-upgrade-cta {
+  width: 100%;
+  background: linear-gradient(135deg, var(--accent), #b06cfc);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: white;
+  font-family: var(--font-head);
+  font-size: 14px;
+  font-weight: 700;
+  padding: 13px;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.15s;
+  letter-spacing: 0.1px;
+  box-shadow: 0 4px 16px rgba(124,108,252,0.35);
+}
+.btn-upgrade-cta:hover { opacity: 0.9; }
+.btn-upgrade-cta:active { transform: scale(0.98); }
+.upgrade-cancel-note {
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 10px;
+}

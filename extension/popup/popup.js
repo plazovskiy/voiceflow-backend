@@ -126,10 +126,10 @@ function updateMainUI(user) {
 
     const remaining = limit - used;
     if (remaining <= 0) {
-      upgradeBanner.classList.remove('hidden');
-      upgradeSettings?.classList.remove('hidden');
+      // Show upgrade screen immediately
+      showScreen('upgrade');
     } else if (remaining < limit * 0.3) {
-      // Show banner when less than 30% left
+      // Show warning banner when less than 30% left
       upgradeBanner.classList.remove('hidden');
       upgradeSettings?.classList.remove('hidden');
     }
@@ -229,6 +229,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-settings').addEventListener('click', () => showScreen('settings'));
   document.getElementById('btn-open-settings').addEventListener('click', () => showScreen('settings'));
   document.getElementById('btn-back').addEventListener('click', () => showScreen('main'));
+  document.getElementById('btn-upgrade-settings-nav')?.addEventListener('click', () => showScreen('settings'));
 
   // Save settings
   document.getElementById('btn-save-settings').addEventListener('click', async () => {
@@ -244,6 +245,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const upgradeHandler = () => chrome.tabs.create({ url: 'https://your-website.com/upgrade' });
   document.getElementById('btn-upgrade')?.addEventListener('click', upgradeHandler);
   document.getElementById('btn-upgrade-settings')?.addEventListener('click', upgradeHandler);
+  document.getElementById('btn-upgrade-main')?.addEventListener('click', upgradeHandler);
 
   // Logout
   document.getElementById('btn-logout').addEventListener('click', async () => {
