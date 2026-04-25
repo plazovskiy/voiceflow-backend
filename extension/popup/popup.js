@@ -102,7 +102,7 @@ function showScreen(name) {
 }
 
 function updateMainUI(user) {
-  if (!user) return;
+  if (!user) return 'main';
   const badge       = document.getElementById('plan-badge');
   const planLabel   = document.getElementById('plan-label');
   const trialCount  = document.getElementById('trial-count');
@@ -115,6 +115,7 @@ function updateMainUI(user) {
     trialCount.textContent = 'Unlimited';
     upgradeBanner.classList.add('hidden');
     upgradeSettings?.classList.add('hidden');
+    return 'main';
   } else {
     badge.className = 'plan-badge trial';
     planLabel.textContent = 'Trial';
@@ -124,24 +125,22 @@ function updateMainUI(user) {
     const limitMin = (limit / 60).toFixed(0);
     trialCount.textContent = `${usedMin}/${limitMin} min used`;
 
-    const remaining = limit - used;
-    if (remaining <= 0) {
-      // Show upgrade screen immediately
-      showScreen('upgrade');
-    } else if (remaining < limit * 0.3) {
-      // Show warning banner when less than 30% left
-      upgradeBanner.classList.remove('hidden');
-      upgradeSettings?.classList.remove('hidden');
-    }
-
     if (document.getElementById('settings-plan')) {
       document.getElementById('settings-plan').textContent =
         `Trial — ${user.trialMinutesRemaining || '10.0'} min remaining`;
     }
-  }
+    if (document.getElementById('settings-email')) {
+      document.getElementById('settings-email').textContent = user.email || '';
+    }
 
-  if (document.getElementById('settings-email')) {
-    document.getElementById('settings-email').textContent = user.email || '';
+    const remaining = limit - used;
+    if (remaining <= 0) {
+      return 'upgrade'; // caller will call showScreen('upgrade')
+    } else if (remaining < limit * 0.3) {
+      upgradeBanner.classList.remove('hidden');
+      upgradeSettings?.classList.remove('hidden');
+    }
+    return 'main';
   }
 }
 
@@ -155,8 +154,8 @@ async function init() {
   if (data.accessToken) {
     const user = await fetchUserData() || data.user;
     if (user) {
-      updateMainUI(user);
-      showScreen('main');
+      const screen = updateMainUI(user);
+      showScreen(screen || 'main');
       return;
     }
   }
@@ -190,8 +189,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       const user = await login(email, password);
-      updateMainUI(user);
-      showScreen('main');
+      const screen = updateMainUI(user);
+      showScreen(screen || 'main');
     } catch (err) {
       errEl.textContent = err.message;
       errEl.classList.remove('hidden');
@@ -214,8 +213,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       const user = await register(email, password);
-      updateMainUI(user);
-      showScreen('main');
+      const screen = updateMainUI(user);
+      showScreen(screen || 'main');
     } catch (err) {
       errEl.textContent = err.message;
       errEl.classList.remove('hidden');
