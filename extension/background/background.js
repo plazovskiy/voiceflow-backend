@@ -9,35 +9,54 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-// ─── Offscreen document management ───────────────────────────────────────────
-async function ensureOffscreenDocument() {
-  const existing = await chrome.offscreen.hasDocument();
-  if (!existing) {
-    await chrome.offscreen.createDocument({
-      url: 'offscreen/offscreen.html',
-      reasons: ['USER_MEDIA'],
-      justification: 'Recording audio from microphone for voice-to-text',
+async function getActiveTab() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  return tab;
+}
+
+async function ensureContentScript(tabId) {
+  try {
+    // Ping the content script — if it responds, it's already loaded
+    await chrome.tabs.sendMessage(tabId, { type: 'PING' });
+  } catch {
+    // Not loaded — inject it now
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['content/content.js'],
     });
+    // Small delay for script to initialize
+    await new Promise(r => setTimeout(r, 200));
   }
 }
 
-// ─── Message relay: popup ↔ offscreen ────────────────────────────────────────
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === 'START_RECORDING') {
-    ensureOffscreenDocument().then(() => {
-      chrome.runtime.sendMessage(
-        { ...message, target: 'offscreen' },
-        (response) => sendResponse(response)
-      );
-    }).catch(err => sendResponse({ success: false, error: err.message }));
-    return true;
-  }
 
-  if (message.type === 'STOP_RECORDING') {
-    chrome.runtime.sendMessage(
-      { ...message, target: 'offscreen' },
-      (response) => sendResponse(response)
-    );
+  if (message.type === 'START_RECORDING' || message.type === 'STOP_RECORDING') {
+    getActiveTab().then(async tab => {
+      if (!tab?.id) {
+        sendResponse({ success: false, error: 'No active tab found. Please open a webpage first.' });
+        return;
+      }
+
+      // Can't inject into chrome:// or extension pages
+      if (!tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
+        sendResponse({ success: false, error: 'Please navigate to a regular webpage first.' });
+        return;
+      }
+
+      try {
+        await ensureContentScript(tab.id);
+        chrome.tabs.sendMessage(tab.id, message, (response) => {
+          if (chrome.runtime.lastError) {
+            sendResponse({ success: false, error: chrome.runtime.lastError.message });
+          } else {
+            sendResponse(response);
+          }
+        });
+      } catch (err) {
+        sendResponse({ success: false, error: 'Could not load on this page: ' + err.message });
+      }
+    });
     return true;
   }
 
