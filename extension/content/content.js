@@ -6,15 +6,20 @@ window.__voiceflowLoaded = true;
 
   let lastFocusedElement = null;
   let mediaRecorder = null;
-  let audioChunks = [];
   let stream = null;
   let isRecording = false;
   let timerInterval = null;
   let seconds = 0;
-  let dragStartX = 0, dragStartY = 0, elemStartX = 0, elemStartY = 0;
   let moved = false;
+  let dragStartX = 0, dragStartY = 0, elemStartX = 0, elemStartY = 0;
 
-  // ── Track focused inputs ─────────────────────────────────────────────────
+  // Chunked streaming state
+  const CHUNK_INTERVAL_MS = 4000; // send every 4 seconds
+  let chunkInterval = null;
+  let currentChunks = [];       // audio data for current chunk
+  let insertedText = '';        // full text inserted so far
+  let insertStartPos = null;    // where in the field we started inserting
+
   function isInsertable(el) {
     if (!el) return false;
     return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' ||
@@ -27,93 +32,52 @@ window.__voiceflowLoaded = true;
     }
   }, true);
 
-  // ── Create widget host with Shadow DOM ───────────────────────────────────
+  // ── Shadow DOM widget ──────────────────────────────────────────────────────
   const host = document.createElement('div');
   host.id = 'vf-host';
   Object.assign(host.style, {
-    position: 'fixed',
-    right: '20px',
-    bottom: '20px',
-    left: 'auto',
-    top: 'auto',
-    zIndex: '2147483647',
-    width: 'auto',
-    height: 'auto',
-    pointerEvents: 'none',
+    position: 'fixed', right: '20px', bottom: '20px',
+    left: 'auto', top: 'auto', zIndex: '2147483647',
+    width: 'auto', height: 'auto', pointerEvents: 'none',
   });
 
-  // Restore saved position
   try {
     const sx = localStorage.getItem('vf-pos-x');
     const sy = localStorage.getItem('vf-pos-y');
     if (sx && sy) {
-      host.style.right = 'auto';
-      host.style.bottom = 'auto';
-      host.style.left = sx + 'px';
-      host.style.top = sy + 'px';
+      host.style.right = 'auto'; host.style.bottom = 'auto';
+      host.style.left = sx + 'px'; host.style.top = sy + 'px';
     }
   } catch (_) {}
 
   const shadowRoot = host.attachShadow({ mode: 'open' });
-
   shadowRoot.innerHTML = `
     <style>
-      :host { all: initial; }
       * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-
-      #wrap {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-end;
-        gap: 6px;
-        pointer-events: all;
-      }
-
+      #wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; pointer-events: all; }
       #result {
-        display: none;
-        background: rgba(10,10,14,0.93);
-        border-radius: 10px;
-        padding: 8px 11px;
-        max-width: 230px;
-        font-size: 12.5px;
-        color: #f0f0f5;
-        line-height: 1.45;
-        word-break: break-word;
-        border: 1px solid rgba(255,255,255,0.08);
+        display: none; background: rgba(10,10,14,0.93);
+        border-radius: 10px; padding: 8px 11px; max-width: 230px;
+        font-size: 12.5px; color: #f0f0f5; line-height: 1.45;
+        word-break: break-word; border: 1px solid rgba(255,255,255,0.08);
       }
       #result.show { display: block; }
-
       #btn {
-        display: flex;
-        align-items: center;
-        gap: 7px;
-        background: #7c6cfc;
-        border: none;
-        border-radius: 50px;
-        padding: 9px 15px 9px 13px;
-        cursor: grab;
-        color: white;
-        font-size: 13px;
-        font-weight: 500;
-        white-space: nowrap;
-        outline: none;
+        display: flex; align-items: center; gap: 7px;
+        background: #7c6cfc; border: none; border-radius: 50px;
+        padding: 9px 15px 9px 13px; cursor: grab;
+        color: white; font-size: 13px; font-weight: 500;
+        white-space: nowrap; outline: none;
         box-shadow: 0 2px 10px rgba(124,108,252,0.45);
-        transition: background 0.2s;
-        -webkit-user-select: none;
-        user-select: none;
+        transition: background 0.2s; user-select: none;
       }
       #btn:active { cursor: grabbing; }
-      #btn.rec {
-        background: #fc4a6c;
-        box-shadow: 0 2px 14px rgba(252,74,108,0.5);
-        animation: pulse 1.4s ease-in-out infinite;
-      }
+      #btn.rec { background: #fc4a6c; box-shadow: 0 2px 14px rgba(252,74,108,0.5); animation: pulse 1.4s ease-in-out infinite; }
       @keyframes pulse {
         0%,100% { box-shadow: 0 2px 10px rgba(252,74,108,0.4); }
         50%      { box-shadow: 0 2px 22px rgba(252,74,108,0.75); }
       }
     </style>
-
     <div id="wrap">
       <div id="result"></div>
       <button id="btn">
@@ -131,15 +95,8 @@ window.__voiceflowLoaded = true;
     </div>
   `;
 
-  // Wait for body to be ready
-  function mount() {
-    if (document.body) {
-      document.body.appendChild(host);
-    } else {
-      document.addEventListener('DOMContentLoaded', () => document.body.appendChild(host));
-    }
-  }
-  mount();
+  if (document.body) document.body.appendChild(host);
+  else document.addEventListener('DOMContentLoaded', () => document.body.appendChild(host));
 
   const btn    = shadowRoot.getElementById('btn');
   const lbl    = shadowRoot.getElementById('lbl');
@@ -152,10 +109,8 @@ window.__voiceflowLoaded = true;
     e.preventDefault();
     moved = false;
     const rect = host.getBoundingClientRect();
-    dragStartX = e.clientX;
-    dragStartY = e.clientY;
-    elemStartX = rect.left;
-    elemStartY = rect.top;
+    dragStartX = e.clientX; dragStartY = e.clientY;
+    elemStartX = rect.left; elemStartY = rect.top;
 
     function onMove(e) {
       const dx = e.clientX - dragStartX;
@@ -164,166 +119,204 @@ window.__voiceflowLoaded = true;
       if (!moved) return;
       const nx = Math.max(0, Math.min(window.innerWidth - 120, elemStartX + dx));
       const ny = Math.max(0, Math.min(window.innerHeight - 50, elemStartY + dy));
-      host.style.left = nx + 'px';
-      host.style.top  = ny + 'px';
-      host.style.right = 'auto';
-      host.style.bottom = 'auto';
+      host.style.left = nx + 'px'; host.style.top = ny + 'px';
+      host.style.right = 'auto'; host.style.bottom = 'auto';
       try { localStorage.setItem('vf-pos-x', nx); localStorage.setItem('vf-pos-y', ny); } catch(_) {}
     }
-
     function onUp() {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
     }
-
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   });
 
-  // ── Click = toggle record ─────────────────────────────────────────────────
   btn.addEventListener('click', () => {
     if (moved) { moved = false; return; }
     isRecording ? stopRecording() : startRecording();
   });
 
-  // ── Start recording ───────────────────────────────────────────────────────
+  // ── Start recording ────────────────────────────────────────────────────────
   async function startRecording() {
-    // Check mic API exists (requires HTTPS)
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      showMsg('Need HTTPS page');
-      return;
-    }
+    if (!navigator.mediaDevices?.getUserMedia) { showMsg('Need HTTPS page'); return; }
 
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (err) {
-      // Map common DOMException names to readable messages
       const msg = {
         'NotAllowedError':  'Allow mic in browser',
         'NotFoundError':    'No microphone found',
         'NotReadableError': 'Mic used by another app',
         'SecurityError':    'HTTPS required',
-      }[err.name] || ('Mic error: ' + err.name);
-      showMsg(msg);
-      return;
+      }[err.name] || ('Mic: ' + err.name);
+      showMsg(msg); return;
     }
 
-    audioChunks = [];
     isRecording = true;
+    insertedText = '';
+    insertStartPos = null;
+    currentChunks = [];
+
+    // Remember where cursor is right now — we'll insert from here
+    const target = lastFocusedElement;
+    if (target && document.body.contains(target) && !target.contentEditable || target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') {
+      insertStartPos = target?.selectionStart ?? null;
+    }
 
     const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
       ? 'audio/webm;codecs=opus' : 'audio/webm';
 
-    mediaRecorder = new MediaRecorder(stream, { mimeType });
-    mediaRecorder.addEventListener('dataavailable', e => {
-      if (e.data.size > 0) audioChunks.push(e.data);
-    });
-    mediaRecorder.start(100);
+    // Create first recorder
+    startNewChunk(mimeType);
 
+    // UI
     btn.classList.add('rec');
-    mic.style.display = 'none';
-    stop.style.display = 'block';
+    mic.style.display = 'none'; stop.style.display = 'block';
     result.classList.remove('show');
-    seconds = 0;
-    lbl.textContent = '0:00';
+    seconds = 0; lbl.textContent = '0:00';
     timerInterval = setInterval(() => {
       seconds++;
-      const m = Math.floor(seconds / 60);
-      const s = seconds % 60;
+      const m = Math.floor(seconds / 60), s = seconds % 60;
       lbl.textContent = `${m}:${s.toString().padStart(2, '0')}`;
     }, 1000);
 
-    // Auto-stop after 3 min
+    // Every CHUNK_INTERVAL_MS: flush current chunk, start new one
+    chunkInterval = setInterval(() => {
+      if (!isRecording) return;
+      flushChunk(mimeType);
+    }, CHUNK_INTERVAL_MS);
+
     setTimeout(() => { if (isRecording) stopRecording(); }, 180000);
   }
 
-  // ── Stop recording ────────────────────────────────────────────────────────
-  function stopRecording() {
-    if (!mediaRecorder || !isRecording) return;
-    isRecording = false;
-    clearInterval(timerInterval);
+  function startNewChunk(mimeType) {
+    currentChunks = [];
+    mediaRecorder = new MediaRecorder(stream, { mimeType });
+    mediaRecorder.addEventListener('dataavailable', e => {
+      if (e.data.size > 0) currentChunks.push(e.data);
+    });
+    mediaRecorder.start(100);
+  }
 
-    btn.classList.remove('rec');
-    mic.style.display = 'block';
-    stop.style.display = 'none';
-    lbl.textContent = '…';
+  // Flush = stop current recorder, send audio, start fresh recorder
+  function flushChunk(mimeType) {
+    if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
+    const chunksToSend = currentChunks;
 
     mediaRecorder.addEventListener('stop', () => {
-      if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-      const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
-      sendForTranscription(blob, mediaRecorder.mimeType);
-    });
+      const blob = new Blob(chunksToSend, { type: mimeType });
+      if (blob.size > 1000) sendChunk(blob, mimeType); // skip silence
+      if (isRecording) startNewChunk(mimeType); // immediately start next
+    }, { once: true });
+
     mediaRecorder.stop();
   }
 
-  // ── Send to background for API call ──────────────────────────────────────
-  function sendForTranscription(blob, mimeType) {
+  // ── Stop recording ─────────────────────────────────────────────────────────
+  function stopRecording() {
+    if (!isRecording) return;
+    isRecording = false;
+    clearInterval(timerInterval);
+    clearInterval(chunkInterval);
+
+    btn.classList.remove('rec');
+    mic.style.display = 'block'; stop.style.display = 'none';
+    lbl.textContent = '…';
+
+    // Flush last chunk
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      const chunksToSend = currentChunks;
+      mediaRecorder.addEventListener('stop', () => {
+        if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+        const blob = new Blob(chunksToSend, { type: mediaRecorder.mimeType });
+        if (blob.size > 1000) {
+          sendChunk(blob, mediaRecorder.mimeType, true /* isFinal */);
+        } else {
+          lbl.textContent = 'Voice';
+        }
+      }, { once: true });
+      mediaRecorder.stop();
+    } else {
+      if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+      lbl.textContent = 'Voice';
+    }
+  }
+
+  // ── Send chunk to background → server ─────────────────────────────────────
+  function sendChunk(blob, mimeType, isFinal = false) {
     const reader = new FileReader();
     reader.onloadend = () => {
       const base64 = reader.result.split(',')[1];
       chrome.runtime.sendMessage({ type: 'TRANSCRIBE', audio: base64, mimeType }, (response) => {
-        lbl.textContent = 'Voice';
-        if (chrome.runtime.lastError) {
-          showMsg('Extension error — reload page');
+        if (isFinal) lbl.textContent = 'Voice';
+        if (chrome.runtime.lastError || !response?.success) {
+          if (response?.error === 'LIMIT') showMsg('⚡ Daily limit reached');
           return;
         }
-        if (!response?.success) {
-          showMsg(response?.error === 'LIMIT' ? '⚡ Daily limit reached' : 'Error: ' + (response?.error || 'unknown'));
-          return;
-        }
-        showMsg(response.text);
-        insertText(response.text);
+        const text = response.text?.trim();
+        if (!text) return;
+
+        // Append to bubble
+        insertedText += (insertedText ? ' ' : '') + text;
+        showMsg(insertedText);
+
+        // Append to focused field
+        appendToField(text);
       });
     };
     reader.readAsDataURL(blob);
   }
 
-  // ── Show result bubble ────────────────────────────────────────────────────
-  let hideTimer = null;
-  function showMsg(text) {
-    result.textContent = text;
-    result.classList.add('show');
-    clearTimeout(hideTimer);
-    hideTimer = setTimeout(() => result.classList.remove('show'), 8000);
-  }
-
-  // ── Insert text into last focused element ────────────────────────────────
-  function insertText(text) {
+  // ── Append text to field (stream-style) ───────────────────────────────────
+  function appendToField(text) {
     const target = lastFocusedElement;
     if (!target || !document.body.contains(target)) return;
+
     try {
       if (target.contentEditable === 'true') {
         target.focus();
         const sel = window.getSelection();
         if (sel && sel.rangeCount > 0) {
           const range = sel.getRangeAt(0);
-          range.deleteContents();
-          const node = document.createTextNode(text);
+          // Move to end of last inserted text
+          range.collapse(false);
+          const prefix = insertedText.length > text.length ? ' ' : '';
+          const node = document.createTextNode(prefix + text);
           range.insertNode(node);
-          range.setStartAfter(node);
-          range.collapse(true);
-          sel.removeAllRanges();
-          sel.addRange(range);
+          range.setStartAfter(node); range.collapse(true);
+          sel.removeAllRanges(); sel.addRange(range);
         } else {
-          target.textContent += text;
+          target.textContent += ' ' + text;
         }
         target.dispatchEvent(new Event('input', { bubbles: true }));
       } else {
-        target.focus();
-        const s = target.selectionStart ?? target.value.length;
-        const e = target.selectionEnd   ?? target.value.length;
-        target.value = target.value.slice(0, s) + text + target.value.slice(e);
-        target.setSelectionRange(s + text.length, s + text.length);
+        // For input/textarea: append at end of what we've already inserted
+        const curVal = target.value;
+        const appendStr = insertedText.length > text.length
+          ? ' ' + text  // not first chunk — add space
+          : text;        // first chunk — no leading space
+        target.value = curVal + appendStr;
+        const pos = target.value.length;
+        target.setSelectionRange(pos, pos);
         target.dispatchEvent(new Event('input', { bubbles: true }));
         target.dispatchEvent(new Event('change', { bubbles: true }));
       }
     } catch (_) {}
   }
 
-  // ── Messages ──────────────────────────────────────────────────────────────
+  // ── Result bubble ──────────────────────────────────────────────────────────
+  let hideTimer = null;
+  function showMsg(text) {
+    result.textContent = text;
+    result.classList.add('show');
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => result.classList.remove('show'), 10000);
+  }
+
+  // ── Messages from background ───────────────────────────────────────────────
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.type === 'PING') { sendResponse({ alive: true }); return; }
-    if (msg.type === 'INSERT_TEXT') { insertText(msg.text); sendResponse({ success: true }); }
+    if (msg.type === 'INSERT_TEXT') { appendToField(msg.text); sendResponse({ success: true }); }
   });
 
 })();

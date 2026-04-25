@@ -126,15 +126,15 @@ function updateMainUI(user) {
   } else {
     badge.className = 'plan-badge trial';
     planLabel.textContent = 'Trial';
-    const used = user.trialUsedToday || 0;
-    const limit = user.trialDailyLimit || 10;
-    trialCount.textContent = `${used}/${limit} today`;
+    const used = user.trialSecondsUsed || 0;
+    const limit = user.trialSecondsLimit || 600;
+    const usedMin = (used/60).toFixed(1); const limMin = (limit/60).toFixed(0); trialCount.textContent = `${usedMin}/ min used`;
     if (used >= limit * 0.7) upgradeBanner.classList.remove('hidden');
   }
 
   document.getElementById('settings-email').textContent = user.email || '';
   document.getElementById('settings-plan').textContent =
-    user.plan === 'PRO' ? 'Pro Plan — Unlimited' : `Trial — ${user.trialRemaining} remaining today`;
+    user.plan === 'PRO' ? 'Pro Plan — Unlimited' : `Trial — ${user.trialMinutesRemaining || '10.0'} min left`;
 }
 
 // ─── Recording via offscreen document ────────────────────────────────────────
@@ -239,13 +239,16 @@ async function transcribeAudio(base64Audio, mimeType) {
     lastTranscribedText = data.text;
 
     // Update trial counter
-    if (data.trialRemaining !== undefined) {
+    if (data.trialSecondsRemaining !== undefined) {
       const stored = await getStorage(['user']);
       const user = stored.user || {};
-      user.trialRemaining = data.trialRemaining;
-      user.trialUsedToday = (user.trialDailyLimit || 10) - data.trialRemaining;
+      user.trialSecondsUsed = data.trialSecondsUsed;
+      user.trialSecondsLimit = data.trialSecondsLimit;
+      user.trialSecondsRemaining = data.trialSecondsRemaining;
+      user.trialMinutesRemaining = data.trialMinutesRemaining;
       await setStorage({ user });
       updateMainUI(user);
+    }
     }
 
     showResult(data.text);

@@ -1,0 +1,73 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  subscription  Subscription?
+  usageLogs     UsageLog[]
+  sessions      Session[]
+}
+
+model Subscription {
+  id        String    @id @default(cuid())
+  userId    String    @unique
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  plan      Plan      @default(TRIAL)
+  status    SubStatus @default(ACTIVE)
+
+  // Trial: total minutes used (not per-day)
+  trialSecondsUsed  Int       @default(0)
+  trialLimitSeconds Int       @default(600) // 10 minutes
+
+  // Paid subscription
+  expiresAt DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model UsageLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  language  String?
+  duration  Float?   // seconds of audio
+  success   Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  refreshToken String   @unique
+  expiresAt    DateTime
+
+  createdAt    DateTime @default(now())
+}
+
+enum Plan {
+  TRIAL
+  PRO
+}
+
+enum SubStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
