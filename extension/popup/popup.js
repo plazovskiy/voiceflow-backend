@@ -91,6 +91,7 @@ async function fetchUserData() {
   const res = await apiFetch('/api/user/me');
   if (!res || !res.ok) return null;
   const data = await res.json();
+  console.log('[VoiceFlow] user data from server:', JSON.stringify(data));
   await setStorage({ user: data });
   return data;
 }
@@ -134,7 +135,9 @@ function updateMainUI(user) {
     }
 
     const remaining = limit - used;
+    console.log('[VoiceFlow] used:', used, 'limit:', limit, 'remaining:', remaining);
     if (remaining <= 0) {
+      console.log('[VoiceFlow] → showing upgrade screen');
       return 'upgrade'; // caller will call showScreen('upgrade')
     } else if (remaining < limit * 0.3) {
       upgradeBanner.classList.remove('hidden');
@@ -155,6 +158,7 @@ async function init() {
     const user = await fetchUserData() || data.user;
     if (user) {
       const screen = updateMainUI(user);
+      console.log('[VoiceFlow] → showScreen:', screen);
       showScreen(screen || 'main');
       return;
     }
@@ -190,6 +194,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const user = await login(email, password);
       const screen = updateMainUI(user);
+      console.log('[VoiceFlow] → showScreen:', screen);
       showScreen(screen || 'main');
     } catch (err) {
       errEl.textContent = err.message;
@@ -214,6 +219,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const user = await register(email, password);
       const screen = updateMainUI(user);
+      console.log('[VoiceFlow] → showScreen:', screen);
       showScreen(screen || 'main');
     } catch (err) {
       errEl.textContent = err.message;
