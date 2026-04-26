@@ -98,10 +98,53 @@ router.post('/', authenticate, transcribeLimiter, upload.single('audio'), async 
     }
 
     const whisperData = await whisperRes.json();
-    const text = whisperData.text?.trim();
-    // Use actual duration from Whisper response, fall back to estimate
+    const rawText = whisperData.text?.trim() || '';
     const actualSeconds = Math.ceil(whisperData.duration || estimatedSeconds);
 
+    // ── Hallucination filter ────────────────────────────────────────────────
+    // Whisper generates fake subtitles/credits on silence or low audio
+    const HALLUCINATION_PATTERNS = [
+      /субтитр/i,
+      /subtitl/i,
+      /перевод/i,
+      /translated by/i,
+      /с вами был/i,
+      /amara\.org/i,
+      /добавил\s+\w+/i,
+      /редактор\s+субтитр/i,
+      /transcript/i,
+      /caption/i,
+      /www\./i,
+      /http/i,
+      /подписывайтесь/i,
+      /subscribe/i,
+      /youtube/i,
+      /©/i,
+      /copyright/i,
+      /all rights reserved/i,
+    ];
+
+    // Also check segment no_speech_prob from verbose_json
+    const segments = whisperData.segments || [];
+    const avgNoSpeechProb = segments.length > 0
+      ? segments.reduce((sum, s) => sum + (s.no_speech_prob || 0), 0) / segments.length
+      : 0;
+
+    const isHallucination =
+      avgNoSpeechProb > 0.6 ||
+      HALLUCINATION_PATTERNS.some(p => p.test(rawText));
+
+    if (isHallucination) {
+      console.log(`[Whisper] hallucination filtered: "${rawText}" (no_speech_prob=${avgNoSpeechProb.toFixed(2)})`);
+      // Return empty — don't charge the user for silence
+      return res.json({
+        text: '',
+        plan: user.subscription.plan,
+        filtered: true,
+      });
+    }
+
+    const text = rawText;
     if (!text) throw new AppError('No speech detected', 400);
 
     // ── Deduct from trial ───────────────────────────────────────────────────
