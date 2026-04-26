@@ -98,8 +98,13 @@ async function fetchUserData() {
 
 // ─── Screens ──────────────────────────────────────────────────────────────────
 function showScreen(name) {
+  const target = document.getElementById(`screen-${name}`);
+  if (!target) {
+    console.error('[VoiceFlow] showScreen: element not found: screen-' + name);
+    return;
+  }
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.getElementById(`screen-${name}`).classList.add('active');
+  target.classList.add('active');
 }
 
 function updateMainUI(user) {
