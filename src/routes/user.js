@@ -5,69 +5,48 @@ const { authenticate } = require('../middleware/auth');
 const router = express.Router();
 const prisma = new PrismaClient();
 
-const TRIAL_DAILY_LIMIT = 10;
-
-// ─── GET /api/user/me ─────────────────────────────────────────────────────────
 router.get('/me', authenticate, async (req, res, next) => {
   try {
     const { user } = req;
     const sub = user.subscription;
 
-    // Reset daily counter if new day
-    if (sub) {
-      const now = new Date();
-      const resetDate = new Date(sub.trialResetDate);
-      const isNewDay =
-        now.getUTCFullYear() !== resetDate.getUTCFullYear() ||
-        now.getUTCMonth() !== resetDate.getUTCMonth() ||
-        now.getUTCDate() !== resetDate.getUTCDate();
+    // Re-fetch subscription fresh from DB to avoid stale cache
+    const freshSub = await prisma.subscription.findUnique({
+      where: { userId: user.id }
+    });
 
-      if (isNewDay) {
-        await prisma.subscription.update({
-          where: { userId: user.id },
-          data: { trialUsedToday: 0, trialResetDate: now }
-        });
-        sub.trialUsedToday = 0;
-      }
-    }
+    const used  = freshSub?.trialSecondsUsed  || 0;
+    const limit = freshSub?.trialLimitSeconds || 600;
+
+    console.log(`[/me] user=${user.email} used=${used} limit=${limit} remaining=${limit - used}`);
 
     res.json({
       id: user.id,
       email: user.email,
-      plan: sub?.plan || 'TRIAL',
-      status: sub?.status || 'ACTIVE',
-      trialUsedToday: sub?.trialUsedToday || 0,
-      trialDailyLimit: TRIAL_DAILY_LIMIT,
-      trialRemaining: Math.max(0, TRIAL_DAILY_LIMIT - (sub?.trialUsedToday || 0)),
-      subscriptionExpiresAt: sub?.expiresAt || null,
+      plan: freshSub?.plan || 'TRIAL',
+      status: freshSub?.status || 'ACTIVE',
+      trialSecondsUsed: used,
+      trialSecondsLimit: limit,
+      trialSecondsRemaining: Math.max(0, limit - used),
+      trialMinutesRemaining: Math.max(0, (limit - used) / 60).toFixed(1),
+      subscriptionExpiresAt: freshSub?.expiresAt || null,
     });
   } catch (error) {
     next(error);
   }
 });
 
-// ─── POST /api/user/upgrade (placeholder for payment integration) ─────────────
 router.post('/upgrade', authenticate, async (req, res, next) => {
   try {
-    // TODO: Integrate payment provider (Stripe, YooKassa, etc.)
-    // This endpoint will be called by your payment webhook after successful payment
     res.json({ message: 'Payment integration coming soon' });
   } catch (error) {
     next(error);
   }
 });
 
-// ─── POST /api/user/webhook/payment (payment provider callback) ───────────────
 router.post('/webhook/payment', express.raw({ type: 'application/json' }), async (req, res, next) => {
   try {
-    // TODO: Verify webhook signature from payment provider
-    // TODO: Update subscription to PRO on successful payment
-    // Example structure:
-    // const { userId, plan, expiresAt } = parsePaymentWebhook(req.body);
-    // await prisma.subscription.update({
-    //   where: { userId },
-    //   data: { plan: 'PRO', status: 'ACTIVE', expiresAt }
-    // });
+    // TODO: verify webhook + update subscription to PRO
     res.json({ received: true });
   } catch (error) {
     next(error);
