@@ -9,19 +9,27 @@ router.get('/me', authenticate, async (req, res, next) => {
   try {
     const { user } = req;
     const sub = user.subscription;
-    const used = sub?.trialSecondsUsed || 0;
-    const limit = sub?.trialLimitSeconds || 600;
+
+    // Re-fetch subscription fresh from DB to avoid stale cache
+    const freshSub = await prisma.subscription.findUnique({
+      where: { userId: user.id }
+    });
+
+    const used  = freshSub?.trialSecondsUsed  || 0;
+    const limit = freshSub?.trialLimitSeconds || 600;
+
+    console.log(`[/me] user=${user.email} used=${used} limit=${limit} remaining=${limit - used}`);
 
     res.json({
       id: user.id,
       email: user.email,
-      plan: sub?.plan || 'TRIAL',
-      status: sub?.status || 'ACTIVE',
+      plan: freshSub?.plan || 'TRIAL',
+      status: freshSub?.status || 'ACTIVE',
       trialSecondsUsed: used,
       trialSecondsLimit: limit,
       trialSecondsRemaining: Math.max(0, limit - used),
       trialMinutesRemaining: Math.max(0, (limit - used) / 60).toFixed(1),
-      subscriptionExpiresAt: sub?.expiresAt || null,
+      subscriptionExpiresAt: freshSub?.expiresAt || null,
     });
   } catch (error) {
     next(error);
