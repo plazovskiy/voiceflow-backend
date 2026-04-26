@@ -198,18 +198,54 @@ window.__voiceflowLoaded = true;
     mediaRecorder.start(100);
   }
 
-  // Flush = stop current recorder, send audio, start fresh recorder
+  // Flush = stop current recorder, check volume, send if speech detected
   function flushChunk(mimeType) {
     if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
     const chunksToSend = currentChunks;
 
     mediaRecorder.addEventListener('stop', () => {
       const blob = new Blob(chunksToSend, { type: mimeType });
-      if (blob.size > 1000) sendChunk(blob, mimeType); // skip silence
-      if (isRecording) startNewChunk(mimeType); // immediately start next
+      // Skip if too small (silence) — ~10KB ≈ 0.5s of speech
+      if (blob.size > 10000) {
+        // Check RMS volume before sending
+        checkVolumeAndSend(blob, mimeType);
+      }
+      if (isRecording) startNewChunk(mimeType);
     }, { once: true });
 
     mediaRecorder.stop();
+  }
+
+  // Analyse audio volume — skip chunk if it's mostly silence
+  function checkVolumeAndSend(blob, mimeType, isFinal = false) {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      try {
+        const arrayBuffer = reader.result;
+        const audioCtx = new AudioContext();
+        audioCtx.decodeAudioData(arrayBuffer.slice(0), (audioBuffer) => {
+          const data = audioBuffer.getChannelData(0);
+          // Calculate RMS amplitude
+          let sum = 0;
+          for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+          const rms = Math.sqrt(sum / data.length);
+          audioCtx.close();
+
+          // RMS < 0.01 = silence (typical speech is 0.05–0.3)
+          if (rms < 0.01) {
+            console.log('[VoiceFlow] silence detected, skipping chunk (rms=' + rms.toFixed(4) + ')');
+            return;
+          }
+          sendChunk(blob, mimeType, isFinal);
+        }, () => {
+          // Decode failed — send anyway to not lose speech
+          sendChunk(blob, mimeType, isFinal);
+        });
+      } catch (_) {
+        sendChunk(blob, mimeType, isFinal);
+      }
+    };
+    reader.readAsArrayBuffer(blob);
   }
 
   // ── Stop recording ─────────────────────────────────────────────────────────
@@ -229,8 +265,8 @@ window.__voiceflowLoaded = true;
       mediaRecorder.addEventListener('stop', () => {
         if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
         const blob = new Blob(chunksToSend, { type: mediaRecorder.mimeType });
-        if (blob.size > 1000) {
-          sendChunk(blob, mediaRecorder.mimeType, true /* isFinal */);
+        if (blob.size > 10000) {
+          checkVolumeAndSend(blob, mediaRecorder.mimeType, true /* isFinal */);
         } else {
           lbl.textContent = 'Voice';
         }
@@ -250,11 +286,12 @@ window.__voiceflowLoaded = true;
       chrome.runtime.sendMessage({ type: 'TRANSCRIBE', audio: base64, mimeType }, (response) => {
         if (isFinal) lbl.textContent = 'Voice';
         if (chrome.runtime.lastError || !response?.success) {
-          if (response?.error === 'LIMIT') showMsg('⚡ Daily limit reached');
+          if (response?.error === 'LIMIT') showMsg('⚡ Trial limit reached — upgrade for more');
           return;
         }
+        // Empty text = hallucination filtered on server, skip silently
         const text = response.text?.trim();
-        if (!text) return;
+        if (!text || response.filtered) return;
 
         // Append to bubble
         insertedText += (insertedText ? ' ' : '') + text;
