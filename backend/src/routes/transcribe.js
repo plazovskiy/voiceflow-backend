@@ -101,6 +101,13 @@ router.post('/', authenticate, transcribeLimiter, upload.single('audio'), async 
     const rawText = whisperData.text?.trim() || '';
     const actualSeconds = Math.ceil(whisperData.duration || estimatedSeconds);
 
+    // Log every Whisper response for debugging
+    const segments = whisperData.segments || [];
+    const avgNoSpeechProb = segments.length > 0
+      ? segments.reduce((sum, s) => sum + (s.no_speech_prob || 0), 0) / segments.length
+      : 0;
+    console.log(`[Whisper] text="${rawText}" duration=${actualSeconds}s no_speech_prob=${avgNoSpeechProb.toFixed(3)} segments=${segments.length}`);
+
     // ── Hallucination filter ────────────────────────────────────────────────
     // Whisper generates fake subtitles/credits on silence or low audio
     const HALLUCINATION_PATTERNS = [
@@ -123,12 +130,6 @@ router.post('/', authenticate, transcribeLimiter, upload.single('audio'), async 
       /copyright/i,
       /all rights reserved/i,
     ];
-
-    // Also check segment no_speech_prob from verbose_json
-    const segments = whisperData.segments || [];
-    const avgNoSpeechProb = segments.length > 0
-      ? segments.reduce((sum, s) => sum + (s.no_speech_prob || 0), 0) / segments.length
-      : 0;
 
     const isHallucination =
       avgNoSpeechProb > 0.6 ||
