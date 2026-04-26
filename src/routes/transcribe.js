@@ -10,148 +10,125 @@ const { AppError } = require('../middleware/errorHandler');
 const router = express.Router();
 const prisma = new PrismaClient();
 
-const TRIAL_DAILY_LIMIT = 10;
-const MAX_AUDIO_SIZE_MB = 25; // Whisper API limit
+const MAX_AUDIO_SIZE_MB = 25;
 
-// In-memory upload (no disk writes)
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_AUDIO_SIZE_MB * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const allowed = ['audio/webm', 'audio/ogg', 'audio/mp4', 'audio/wav', 'audio/mpeg'];
-    if (allowed.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new AppError('Invalid audio format', 400));
-    }
+    const allowed = ['audio/webm', 'audio/ogg', 'audio/mp4', 'audio/wav', 'audio/mpeg', 'audio/webm;codecs=opus'];
+    const ok = allowed.some(t => file.mimetype.startsWith(t.split(';')[0]));
+    ok ? cb(null, true) : cb(new AppError('Invalid audio format', 400));
   }
 });
 
-// Strict rate limit for transcription endpoint
 const transcribeLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 20,
+  windowMs: 60 * 1000,
+  max: 60, // up to 60 chunks/min (fine-grained chunks)
   message: { error: 'Too many requests, slow down' }
 });
 
-// ─── Check and update trial limits ───────────────────────────────────────────
-async function checkAndUpdateLimits(userId, subscription) {
-  // PRO users have no limits
+// ── Estimate audio duration from file size ────────────────────────────────────
+// webm/opus ~20kb/sec is a rough estimate; good enough for billing
+function estimateDurationSeconds(fileSizeBytes) {
+  const bytesPerSecond = 20000; // ~20kb/s for webm/opus at default quality
+  return Math.ceil(fileSizeBytes / bytesPerSecond);
+}
+
+// ── Check limits ──────────────────────────────────────────────────────────────
+async function checkLimits(userId, subscription, estimatedSeconds) {
   if (subscription.plan === 'PRO' && subscription.status === 'ACTIVE') {
-    // Check if subscription expired
     if (subscription.expiresAt && subscription.expiresAt < new Date()) {
-      await prisma.subscription.update({
-        where: { userId },
-        data: { status: 'EXPIRED' }
-      });
+      await prisma.subscription.update({ where: { userId }, data: { status: 'EXPIRED' } });
       throw new AppError('Your subscription has expired. Please renew.', 402);
     }
-    return { allowed: true, remaining: null };
+    return { allowed: true, secondsRemaining: null };
   }
 
-  // Reset daily counter if it's a new day
-  const now = new Date();
-  const resetDate = new Date(subscription.trialResetDate);
-  const isNewDay =
-    now.getUTCFullYear() !== resetDate.getUTCFullYear() ||
-    now.getUTCMonth() !== resetDate.getUTCMonth() ||
-    now.getUTCDate() !== resetDate.getUTCDate();
+  const used = subscription.trialSecondsUsed || 0;
+  const limit = subscription.trialLimitSeconds || 600;
+  const remaining = limit - used;
 
-  if (isNewDay) {
-    await prisma.subscription.update({
-      where: { userId },
-      data: { trialUsedToday: 0, trialResetDate: now }
-    });
-    subscription.trialUsedToday = 0;
-  }
-
-  if (subscription.trialUsedToday >= TRIAL_DAILY_LIMIT) {
+  if (remaining <= 0) {
     throw new AppError(
-      `Daily trial limit reached (${TRIAL_DAILY_LIMIT}/day). Upgrade to Pro for unlimited use.`,
+      `Trial limit reached (${Math.floor(limit / 60)} min). Upgrade to Pro for unlimited use.`,
       429
     );
   }
 
-  // Increment counter
-  await prisma.subscription.update({
-    where: { userId },
-    data: { trialUsedToday: { increment: 1 } }
-  });
-
-  return {
-    allowed: true,
-    remaining: TRIAL_DAILY_LIMIT - subscription.trialUsedToday - 1
-  };
+  return { allowed: true, secondsRemaining: remaining };
 }
 
-// ─── POST /api/transcribe ─────────────────────────────────────────────────────
+// ── POST /api/transcribe ───────────────────────────────────────────────────────
 router.post('/', authenticate, transcribeLimiter, upload.single('audio'), async (req, res, next) => {
   try {
-    if (!req.file) {
-      throw new AppError('Audio file required', 400);
-    }
+    if (!req.file) throw new AppError('Audio file required', 400);
 
     const { user } = req;
-    if (!user.subscription) {
-      throw new AppError('Account setup incomplete', 400);
-    }
+    if (!user.subscription) throw new AppError('Account setup incomplete', 400);
 
-    // Check limits BEFORE calling OpenAI (saves costs on blocked requests)
-    const { remaining } = await checkAndUpdateLimits(user.id, user.subscription);
+    const estimatedSeconds = estimateDurationSeconds(req.file.size);
 
-    // Determine language
+    // Check limits before calling OpenAI
+    const { secondsRemaining } = await checkLimits(user.id, user.subscription, estimatedSeconds);
+
     const language = req.body.language && req.body.language !== 'auto'
-      ? req.body.language
-      : null; // null = auto-detect in Whisper
+      ? req.body.language : null;
 
-    // ── Call OpenAI Whisper API ──────────────────────────────────────────────
+    // ── Call Whisper ────────────────────────────────────────────────────────
     const formData = new FormData();
     formData.append('file', req.file.buffer, {
       filename: 'audio.webm',
       contentType: req.file.mimetype,
     });
     formData.append('model', 'whisper-1');
-    formData.append('response_format', 'json');
-    if (language) {
-      formData.append('language', language);
-    }
+    formData.append('response_format', 'verbose_json'); // gives us actual duration!
+    if (language) formData.append('language', language);
 
-    const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-        ...formData.getHeaders(),
-      },
+      headers: { 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`, ...formData.getHeaders() },
       body: formData,
     });
 
-    if (!whisperResponse.ok) {
-      const errBody = await whisperResponse.json().catch(() => ({}));
-      console.error('[Whisper error]', errBody);
+    if (!whisperRes.ok) {
+      const err = await whisperRes.json().catch(() => ({}));
+      console.error('[Whisper error]', err);
       throw new AppError('Speech recognition failed, please try again', 502);
     }
 
-    const whisperData = await whisperResponse.json();
+    const whisperData = await whisperRes.json();
     const text = whisperData.text?.trim();
+    // Use actual duration from Whisper response, fall back to estimate
+    const actualSeconds = Math.ceil(whisperData.duration || estimatedSeconds);
 
-    if (!text) {
-      throw new AppError('No speech detected', 400);
+    if (!text) throw new AppError('No speech detected', 400);
+
+    // ── Deduct from trial ───────────────────────────────────────────────────
+    if (user.subscription.plan !== 'PRO') {
+      await prisma.subscription.update({
+        where: { userId: user.id },
+        data: { trialSecondsUsed: { increment: actualSeconds } }
+      });
     }
 
-    // Log usage (async, don't block response)
+    // Log async
     prisma.usageLog.create({
-      data: {
-        userId: user.id,
-        language: language || 'auto',
-        success: true,
-      }
+      data: { userId: user.id, language: language || 'auto', duration: actualSeconds, success: true }
     }).catch(console.error);
+
+    const usedAfter = (user.subscription.trialSecondsUsed || 0) + actualSeconds;
+    const limit = user.subscription.trialLimitSeconds || 600;
 
     res.json({
       text,
-      language: language || 'auto',
       plan: user.subscription.plan,
-      ...(remaining !== null && { trialRemaining: remaining }),
+      ...(user.subscription.plan === 'TRIAL' && {
+        trialSecondsUsed: usedAfter,
+        trialSecondsLimit: limit,
+        trialSecondsRemaining: Math.max(0, limit - usedAfter),
+        trialMinutesRemaining: Math.max(0, (limit - usedAfter) / 60).toFixed(1),
+      }),
     });
 
   } catch (error) {
