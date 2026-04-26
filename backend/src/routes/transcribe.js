@@ -131,21 +131,38 @@ router.post('/', authenticate, transcribeLimiter, upload.single('audio'), async 
       /all rights reserved/i,
     ];
 
+    // ── Block full hallucinations ────────────────────────────────────────────
     const isHallucination =
-      avgNoSpeechProb > 0.6 ||
+      avgNoSpeechProb > 0.5 ||
       HALLUCINATION_PATTERNS.some(p => p.test(rawText));
 
     if (isHallucination) {
-      console.log(`[Whisper] hallucination filtered: "${rawText}" (no_speech_prob=${avgNoSpeechProb.toFixed(2)})`);
-      // Return empty — don't charge the user for silence
-      return res.json({
-        text: '',
-        plan: user.subscription.plan,
-        filtered: true,
-      });
+      console.log(`[Whisper] blocked hallucination: "${rawText}"`);
+      return res.json({ text: '', plan: user.subscription.plan, filtered: true });
     }
 
-    const text = rawText;
+    // ── Strip hallucination suffixes from real speech ─────────────────────────
+    // Sometimes Whisper appends junk to real speech
+    const STRIP_PATTERNS = [
+      /[.!?,]?\s*с вами был[^.!?]*/gi,
+      /[.!?,]?\s*субтитр[^.!?]*/gi,
+      /[.!?,]?\s*subtitl[^.!?]*/gi,
+      /[.!?,]?\s*перевод[^.!?]*/gi,
+      /[.!?,]?\s*translated by[^.!?]*/gi,
+      /[.!?,]?\s*добавил\s+\w+[^.!?]*/gi,
+      /[.!?,]?\s*подписывайтесь[^.!?]*/gi,
+      /[.!?,]?\s*amara\.org[^.!?]*/gi,
+      /\s*©.*$/gi,
+      /\s*http\S+/gi,
+      /\s*www\.\S+/gi,
+    ];
+
+    let text = rawText;
+    for (const pattern of STRIP_PATTERNS) {
+      text = text.replace(pattern, '').trim();
+    }
+
+    console.log(`[Whisper] final text: "${text}" (was: "${rawText}")`);
     if (!text) throw new AppError('No speech detected', 400);
 
     // ── Deduct from trial ───────────────────────────────────────────────────
